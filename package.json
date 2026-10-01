@@ -1,0 +1,76 @@
+{
+  "name": "@perawallet/use-wallet-pera",
+  "version": "1.0.0-beta.0",
+  "description": "Pera Wallet adapter for @txnlab/use-wallet, maintained by Pera Wallet",
+  "keywords": [
+    "algorand",
+    "pera",
+    "use-wallet",
+    "wallet"
+  ],
+  "homepage": "https://github.com/perawallet/use-wallet-pera#readme",
+  "bugs": {
+    "url": "https://github.com/perawallet/use-wallet-pera/issues"
+  },
+  "license": "MIT",
+  "author": "Pera Wallet",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/perawallet/use-wallet-pera.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@perawallet/connect": "1.7.0-beta.2"
+  },
+  "devDependencies": {
+    "@txnlab/use-wallet": "5.0.1",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.0.0",
+    "algosdk": "3.8.0",
+    "eslint-plugin-unused-imports": "4.4.1",
+    "jsdom": "^30.0.0",
+    "oxfmt": "^0.70.0",
+    "oxlint": "^1.0.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "publint": "^0.3.0",
+    "tsdown": "0.23.0",
+    "typescript": "~5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@txnlab/use-wallet": "^5.0.0",
+    "algosdk": "^3.5.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.28.1"
+}

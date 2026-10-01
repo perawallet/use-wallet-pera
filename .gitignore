@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.tgz
+.DS_Store
+
+# pnpm is the only supported package manager; block stray lockfiles
+package-lock.json
+yarn.lock
