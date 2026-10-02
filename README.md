@@ -57,7 +57,7 @@ What's different from the TxnLab package:
 - **All connect options.** Options such as `singleAccount`, `shouldPreferExtension` and `algod` are passed through, not just `bridge`, `shouldShowSignTxnToast`, `chainId` and `compactMode`.
 - **Typed signing errors.** A rejected or failed signing request throws use-wallet's `SignTxnsError` or `SignDataError`. The code is `4001` when the user cancelled and `4300` otherwise, and the original Pera error type is in `error.data.type`.
 - **A strict response count.** If the wallet returns a different number of signed transactions than it was asked for, `signTransactions` throws instead of returning a misaligned array.
-- **Pera and Defly in the same app.** From connect 1.7, Pera stores its WalletConnect session under its own key, so it no longer competes with Defly for the shared one. The Pera session also resumes on page load while Defly is the active wallet.
+- **Sharing an app with other WalletConnect wallets.** From connect 1.7, Pera keeps its WalletConnect session under its own storage key, so it no longer competes with other WalletConnect v1 wallets for the shared one. Pera's session also resumes on page load while another wallet is active.
 
 ## Error handling
 

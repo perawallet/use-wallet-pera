@@ -185,73 +185,75 @@ describe("PeraAdapter", () => {
     });
   });
 
-  describe("Defly coexistence", () => {
-    const deflySession = '{"bridge":"https://bridge.defly.app","accounts":["DEFLY"]}';
+  describe("sharing the WalletConnect v1 key with other wallets", () => {
+    // Defly is the use-wallet adapter that still keeps its session in the shared key.
+    const otherWallet = "defly";
+    const otherSession = '{"bridge":"https://bridge.example.com","accounts":["OTHER"]}';
 
-    it("stashes Defly's shared WalletConnect session when connecting over an active Defly", async () => {
+    it("stashes the active wallet's shared session when Pera connects", async () => {
       withState({
-        activeWallet: "defly",
-        wallets: { defly: { accounts: [account2], activeAccount: account2 } },
+        activeWallet: otherWallet,
+        wallets: { [otherWallet]: { accounts: [account2], activeAccount: account2 } },
       });
-      localStorage.setItem("walletconnect", deflySession);
+      localStorage.setItem("walletconnect", otherSession);
       mockPeraWallet.connect.mockResolvedValueOnce([account1.address]);
 
       await wallet.connect();
 
       expect(localStorage.getItem("walletconnect")).toBeNull();
-      expect(localStorage.getItem("walletconnect-defly")).toBe(deflySession);
+      expect(localStorage.getItem(`walletconnect-${otherWallet}`)).toBe(otherSession);
     });
 
-    it("leaves Defly's session in place when the Pera connect is cancelled", async () => {
+    it("leaves the other wallet's session in place when the Pera connect is cancelled", async () => {
       withState({
-        activeWallet: "defly",
-        wallets: { defly: { accounts: [account2], activeAccount: account2 } },
+        activeWallet: otherWallet,
+        wallets: { [otherWallet]: { accounts: [account2], activeAccount: account2 } },
       });
-      localStorage.setItem("walletconnect", deflySession);
+      localStorage.setItem("walletconnect", otherSession);
       mockPeraWallet.connect.mockRejectedValueOnce(new Error("Modal closed"));
 
       await expect(wallet.connect()).rejects.toThrow("Modal closed");
 
-      expect(localStorage.getItem("walletconnect")).toBe(deflySession);
-      expect(localStorage.getItem("walletconnect-defly")).toBeNull();
+      expect(localStorage.getItem("walletconnect")).toBe(otherSession);
+      expect(localStorage.getItem(`walletconnect-${otherWallet}`)).toBeNull();
     });
 
-    it("stashes Defly's session when Pera becomes the active wallet", () => {
+    it("stashes the other wallet's session when Pera becomes the active wallet", () => {
       withState({
-        activeWallet: "defly",
+        activeWallet: otherWallet,
         wallets: {
-          defly: { accounts: [account2], activeAccount: account2 },
+          [otherWallet]: { accounts: [account2], activeAccount: account2 },
           [WALLET_ID]: { accounts: [account1], activeAccount: account1 },
         },
       });
-      localStorage.setItem("walletconnect", deflySession);
+      localStorage.setItem("walletconnect", otherSession);
 
       wallet.setActive();
 
       expect(store.state.activeWallet).toBe(WALLET_ID);
       expect(localStorage.getItem("walletconnect")).toBeNull();
-      expect(localStorage.getItem("walletconnect-defly")).toBe(deflySession);
+      expect(localStorage.getItem(`walletconnect-${otherWallet}`)).toBe(otherSession);
     });
 
-    it("leaves the shared key alone when Defly is not the active wallet", async () => {
+    it("leaves the shared key alone when the active wallet doesn't use it", async () => {
       withState({
         activeWallet: "lute",
         wallets: { lute: { accounts: [account2], activeAccount: account2 } },
       });
-      localStorage.setItem("walletconnect", deflySession);
+      localStorage.setItem("walletconnect", otherSession);
       mockPeraWallet.connect.mockResolvedValueOnce([account1.address]);
 
       await wallet.connect();
 
-      expect(localStorage.getItem("walletconnect")).toBe(deflySession);
-      expect(localStorage.getItem("walletconnect-defly")).toBeNull();
+      expect(localStorage.getItem("walletconnect")).toBe(otherSession);
+      expect(localStorage.getItem(`walletconnect-${otherWallet}`)).toBeNull();
     });
 
-    it("resumes its own session while Defly is active", async () => {
+    it("resumes its own session while another wallet is active", async () => {
       withState({
-        activeWallet: "defly",
+        activeWallet: otherWallet,
         wallets: {
-          defly: { accounts: [account2], activeAccount: account2 },
+          [otherWallet]: { accounts: [account2], activeAccount: account2 },
           [WALLET_ID]: { accounts: [account1], activeAccount: account1 },
         },
       });
@@ -335,8 +337,8 @@ describe("PeraAdapter", () => {
 
       it("does not auto-connect when another wallet is active", async () => {
         withState({
-          activeWallet: "defly",
-          wallets: { defly: { accounts: [account2], activeAccount: account2 } },
+          activeWallet: "lute",
+          wallets: { lute: { accounts: [account2], activeAccount: account2 } },
         });
 
         await wallet.resumeSession();
