@@ -27,6 +27,13 @@ const ICON = `data:image/svg+xml;base64,${btoa(icon)}`;
 const USER_REJECTED = 4001;
 const INVALID_INPUT = 4300;
 
+const SHARED_WALLETCONNECT_KEY = "walletconnect";
+
+// Adapters that keep their session in the shared key. Only those sessions are
+// stashed: when any other wallet is active, a session in the shared key isn't
+// that wallet's, and stashing it under that wallet's id would orphan it.
+const SHARED_WALLETCONNECT_WALLETS = new Set(["defly"]);
+
 // Detected by shape rather than `instanceof` so it still matches when a dApp
 // ends up with two copies of @perawallet/connect in its bundle.
 function isPeraWalletConnectError(error: unknown): error is Error & { data: { type: string } } {
@@ -78,20 +85,29 @@ export class PeraAdapter extends BaseWallet<PeraOptions> {
   }
 
   /**
-   * Since connect 1.7 Pera keeps its WalletConnect session under its own
-   * storage key, so anything in the shared WalletConnect v1 key belongs to
-   * Defly. The Defly adapter expects whoever takes over from it to stash that
-   * session as `walletconnect-defly` and restores it from there; without this
-   * Defly's session is lost on the next wallet switch.
+   * Compatibility shim for adapters that still keep their WalletConnect v1
+   * session in the shared `walletconnect` key. From connect 1.7 Pera never
+   * touches that key, so whatever is in it belongs to the active wallet.
+   *
+   * Those adapters were written for when Pera shared the key too. When one
+   * takes over from Pera, it first moves whatever is in the shared key to
+   * `walletconnect-pera`, assuming the session there is Pera's, then restores
+   * its own from `walletconnect-<its id>`. If Pera left that wallet's session
+   * in the shared key, it would be filed under Pera's name and lost. Moving it
+   * to `walletconnect-<its id>` first means the round trip puts it back.
+   *
+   * Delete this once those adapters stop special-casing Pera.
    */
-  private stashDeflySession(): void {
-    if (this.store.getActiveWallet() !== "defly" || typeof localStorage === "undefined") return;
+  private stashSharedWalletConnectSession(): void {
+    const activeWallet = this.store.getActiveWallet();
+    if (!activeWallet || !SHARED_WALLETCONNECT_WALLETS.has(activeWallet)) return;
+    if (typeof localStorage === "undefined") return;
 
-    const session = localStorage.getItem("walletconnect");
+    const session = localStorage.getItem(SHARED_WALLETCONNECT_KEY);
     if (session) {
-      localStorage.setItem("walletconnect-defly", session);
-      localStorage.removeItem("walletconnect");
-      this.logger.debug("Stashed Defly WalletConnect session");
+      localStorage.setItem(`${SHARED_WALLETCONNECT_KEY}-${activeWallet}`, session);
+      localStorage.removeItem(SHARED_WALLETCONNECT_KEY);
+      this.logger.debug(`Stashed ${activeWallet}'s WalletConnect session`);
     }
   }
 
@@ -112,8 +128,8 @@ export class PeraAdapter extends BaseWallet<PeraOptions> {
       throw new Error("No accounts found!");
     }
 
-    // Only once Pera is taking over: a cancelled connect leaves Defly as it was.
-    this.stashDeflySession();
+    // Only once Pera is taking over: a cancelled connect leaves the other wallet as it was.
+    this.stashSharedWalletConnectSession();
 
     const walletAccounts = this.toWalletAccounts(accounts);
     const walletState: WalletState = {
@@ -137,7 +153,7 @@ export class PeraAdapter extends BaseWallet<PeraOptions> {
 
   public override setActive = (): void => {
     this.logger.info(`Set active wallet: ${this.id}`);
-    this.stashDeflySession();
+    this.stashSharedWalletConnectSession();
     this.store.setActive();
   };
 
