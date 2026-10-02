@@ -161,31 +161,13 @@ export class PeraAdapter extends BaseWallet<PeraOptions> {
     try {
       const walletState = this.store.getWalletState();
 
-      // Inside Pera's in-app (Discover) browser, connect without a click when
-      // no other wallet holds the session. Same check as
-      // `PeraWalletConnect.isPeraDiscoverBrowser`, done here so ordinary page
-      // loads don't pay for loading the connect bundle.
-      if (
-        !walletState &&
-        !this.store.getActiveWallet() &&
-        typeof window !== "undefined" &&
-        window.navigator?.userAgent.includes("pera")
-      ) {
-        this.logger.info("Pera Discover browser detected, attempting auto-connect...");
-        try {
-          await this.connect();
-          this.logger.info("Auto-connect successful");
-        } catch (error) {
-          this.logger.warn("Auto-connect failed:", (error as Error).message);
-        }
-        return;
-      }
-
       if (!walletState) {
         this.logger.info("No session to resume");
         return;
       }
 
+      // connect resumes over whichever transport the session was made with:
+      // the extension, Pera Web or WalletConnect to the mobile app.
       this.logger.info("Resuming session...");
 
       const client = await this.getClient();
