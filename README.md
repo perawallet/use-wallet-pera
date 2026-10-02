@@ -5,7 +5,7 @@
 
 The [Pera Wallet](https://perawallet.app) adapter for [use-wallet](https://github.com/TxnLab/use-wallet), maintained by Pera.
 
-It wraps [`@perawallet/connect`](https://github.com/perawallet/connect), so one adapter covers the Pera mobile app (WalletConnect), Pera Web, the Pera browser extension and Pera's in-app Discover browser.
+It wraps [`@perawallet/connect`](https://github.com/perawallet/connect), so one adapter covers the Pera mobile app (WalletConnect), Pera Web and the Pera browser extension.
 
 ## Installation
 

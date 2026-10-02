@@ -313,54 +313,6 @@ describe("PeraAdapter", () => {
       await expect(wallet.resumeSession()).rejects.toThrow("No accounts found!");
       expect(store.state.wallets[WALLET_ID]).toBeUndefined();
     });
-
-    describe("in the Pera Discover browser", () => {
-      let userAgent: string;
-
-      beforeEach(() => {
-        userAgent = "pera/1.0.0";
-        vi.spyOn(window.navigator, "userAgent", "get").mockImplementation(() => userAgent);
-      });
-
-      afterEach(() => {
-        vi.restoreAllMocks();
-      });
-
-      it("auto-connects when no wallet holds a session", async () => {
-        mockPeraWallet.connect.mockResolvedValueOnce([account1.address]);
-
-        await wallet.resumeSession();
-
-        expect(mockPeraWallet.connect).toHaveBeenCalled();
-        expect(store.state.wallets[WALLET_ID]).toBeDefined();
-      });
-
-      it("does not auto-connect when another wallet is active", async () => {
-        withState({
-          activeWallet: "lute",
-          wallets: { lute: { accounts: [account2], activeAccount: account2 } },
-        });
-
-        await wallet.resumeSession();
-
-        expect(mockPeraWallet.connect).not.toHaveBeenCalled();
-      });
-
-      it("does not auto-connect in other browsers", async () => {
-        userAgent = "chrome/1.0.0";
-
-        await wallet.resumeSession();
-
-        expect(mockPeraWallet.connect).not.toHaveBeenCalled();
-      });
-
-      it("swallows an auto-connect failure", async () => {
-        mockPeraWallet.connect.mockRejectedValueOnce(new Error("Connect failed"));
-
-        await expect(wallet.resumeSession()).resolves.toBeUndefined();
-        expect(store.state.wallets[WALLET_ID]).toBeUndefined();
-      });
-    });
   });
 
   describe("signing transactions", () => {
