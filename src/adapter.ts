@@ -43,8 +43,15 @@ function isPeraWalletConnectError(error: unknown): error is Error & { data: { ty
   );
 }
 
-function errorCode(error: { data: { type: string } }) {
-  return error.data.type.includes("CANCELLED") ? USER_REJECTED : INVALID_INPUT;
+// The extension and Pera Web report a cancel as a *_CANCELLED type. Pera Mobile
+// can't: WalletConnect v1 keeps only the message of the wallet's JSON-RPC error,
+// so connect wraps it as a plain SIGN_TRANSACTIONS or SIGN_DATA.
+const MOBILE_REJECTION = /^user rejected/i;
+
+function errorCode(error: Error & { data: { type: string } }) {
+  return error.data.type.includes("CANCELLED") || MOBILE_REJECTION.test(error.message)
+    ? USER_REJECTED
+    : INVALID_INPUT;
 }
 
 export class PeraAdapter extends BaseWallet<PeraOptions> {

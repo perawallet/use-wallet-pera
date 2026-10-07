@@ -436,6 +436,32 @@ describe("PeraAdapter", () => {
         });
       });
 
+      // WalletConnect v1 drops the wallet's error code, so a rejection in the
+      // mobile app reaches connect as a plain SIGN_TRANSACTIONS with this message.
+      it("maps a rejection in Pera Mobile to SignTxnsError 4001", async () => {
+        mockPeraWallet.signTransaction.mockRejectedValueOnce(
+          peraError("User rejected", "SIGN_TRANSACTIONS"),
+        );
+
+        await expect(wallet.signTransactions([txn1])).rejects.toMatchObject({
+          name: "SignTxnsError",
+          message: "User rejected",
+          code: 4001,
+          data: { type: "SIGN_TRANSACTIONS" },
+        });
+      });
+
+      it("keeps other Pera Mobile failures at SignTxnsError 4300", async () => {
+        mockPeraWallet.signTransaction.mockRejectedValueOnce(
+          peraError("Failed to sign transaction", "SIGN_TRANSACTIONS"),
+        );
+
+        await expect(wallet.signTransactions([txn1])).rejects.toMatchObject({
+          name: "SignTxnsError",
+          code: 4300,
+        });
+      });
+
       it("maps other Pera errors to SignTxnsError 4300", async () => {
         mockPeraWallet.signTransaction.mockRejectedValueOnce(
           peraError("Wrong network", "SIGN_TXN_NETWORK_MISMATCH"),
@@ -532,6 +558,28 @@ describe("PeraAdapter", () => {
         name: "SignDataError",
         message: "Sign data cancelled",
         code: 4001,
+      });
+    });
+
+    it("maps a rejection in Pera Mobile to SignDataError 4001", async () => {
+      mockPeraWallet.signArc60Data.mockRejectedValueOnce(peraError("User rejected", "SIGN_DATA"));
+
+      await expect(wallet.signData("test-data", metadata)).rejects.toMatchObject({
+        name: "SignDataError",
+        message: "User rejected",
+        code: 4001,
+        data: { type: "SIGN_DATA" },
+      });
+    });
+
+    it("keeps other Pera Mobile failures at SignDataError 4300", async () => {
+      mockPeraWallet.signArc60Data.mockRejectedValueOnce(
+        peraError("Failed to sign ARC-60 data", "SIGN_DATA"),
+      );
+
+      await expect(wallet.signData("test-data", metadata)).rejects.toMatchObject({
+        name: "SignDataError",
+        code: 4300,
       });
     });
 
