@@ -1,6 +1,6 @@
 {
   "name": "@perawallet/use-wallet-pera",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0",
   "description": "Pera Wallet adapter for @txnlab/use-wallet, maintained by Pera Wallet",
   "keywords": [
     "algorand",
