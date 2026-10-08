@@ -1,6 +1,6 @@
 {
   "name": "@perawallet/use-wallet-pera",
-  "version": "1.0.0-beta.0",
+  "version": "1.0.0",
   "description": "Pera Wallet adapter for @txnlab/use-wallet, maintained by Pera Wallet",
   "keywords": [
     "algorand",
@@ -48,7 +48,7 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
-    "@perawallet/connect": "1.7.0-beta.2"
+    "@perawallet/connect": "1.7.0"
   },
   "devDependencies": {
     "@txnlab/use-wallet": "5.0.1",
