@@ -40,6 +40,15 @@ pera({
 
 The adapter supports MainNet and TestNet, transaction signing (`signTransactions` and `transactionSigner`) and ARC-60 data signing (`signData`).
 
+## Empty signatures
+
+With use-wallet 5.1 or later, the adapter asks Pera for each account's empty signature right after `connect()` and sets it as `WalletAccount.emptySignature`. It tells your app the account's type, and `emptyTransactionSigner` uses it to simulate with the right signature shape for fees. Pera answers without prompting the user.
+
+- Pera Mobile and the Pera browser extension answer on MainNet and TestNet. Pera Web, Pera apps and extensions without support, and other networks leave the accounts' types unknown.
+- `connect()` doesn't wait for the answer. If Pera doesn't answer within 30 seconds, the types stay unknown.
+- A resumed session keeps the empty signatures it connected with. use-wallet clears an account's if the account was rekeyed since.
+- With use-wallet 5.0, the adapter doesn't ask.
+
 ## Migrating from `@txnlab/use-wallet-pera`
 
 Swap the package and the import. Nothing else changes:
