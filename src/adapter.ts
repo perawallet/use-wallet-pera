@@ -15,7 +15,7 @@ import {
   type WalletMetadata,
   type WalletState,
 } from "@txnlab/use-wallet/adapter";
-import type { PeraWalletConnect } from "@perawallet/connect";
+import type { PeraNetwork, PeraWalletConnect } from "@perawallet/connect";
 import { icon } from "./icon";
 
 /** Every `PeraWalletConnect` constructor option, passed through unchanged. */
@@ -33,6 +33,13 @@ const SHARED_WALLETCONNECT_KEY = "walletconnect";
 // stashed: when any other wallet is active, a session in the shared key isn't
 // that wallet's, and stashing it under that wallet's id would orphan it.
 const SHARED_WALLETCONNECT_WALLETS = new Set(["defly"]);
+
+// The networks Pera gives empty signatures for, by genesis hash, so a renamed
+// or custom-node config of the same network still matches.
+const PERA_NETWORKS = new Map<string, PeraNetwork>([
+  ["wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=", "mainnet"],
+  ["SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", "testnet"],
+]);
 
 // Detected by shape rather than `instanceof` so it still matches when a dApp
 // ends up with two copies of @perawallet/connect in its bundle.
@@ -56,6 +63,8 @@ function errorCode(error: Error & { data: { type: string } }) {
 
 export class PeraAdapter extends BaseWallet<PeraOptions> {
   private client: Promise<PeraWalletConnect> | null = null;
+  // Bumped on each connect, so a late empty signatures answer from an earlier one is discarded.
+  private connectCount = 0;
 
   constructor(params: AdapterConstructorParams<PeraOptions>) {
     super(params);
@@ -146,9 +155,46 @@ export class PeraAdapter extends BaseWallet<PeraOptions> {
 
     this.store.addWallet(walletState);
 
+    // Don't hold up the connection waiting for the wallet
+    void this.requestEmptySignatures(client, ++this.connectCount);
+
     this.logger.info("Connected successfully", walletState);
     return walletAccounts;
   };
+
+  /**
+   * Asks Pera for the accounts' empty signatures and applies them when they
+   * arrive. Pera answers without prompting the user. If it can't answer, or
+   * the network changed or Pera reconnected in the meantime, the accounts'
+   * types stay unknown.
+   */
+  private async requestEmptySignatures(
+    client: PeraWalletConnect,
+    connectCount: number,
+  ): Promise<void> {
+    // use-wallet 5.0 has no empty signatures
+    if (typeof this.applyEmptySignatures !== "function") return;
+
+    const network = PERA_NETWORKS.get(this.activeNetworkConfig?.genesisHash ?? "");
+    if (!network) {
+      this.logger.debug(`Pera has no empty signatures for ${this.activeNetwork}`);
+      return;
+    }
+
+    const networkId = this.activeNetwork;
+
+    try {
+      const emptySignatures = await client.getEmptySignatures(network);
+
+      if (this.connectCount !== connectCount || this.activeNetwork !== networkId) {
+        return;
+      }
+
+      this.applyEmptySignatures(emptySignatures);
+    } catch (error) {
+      this.logger.warn(`Could not get empty signatures: ${(error as Error).message}`);
+    }
+  }
 
   public disconnect = async (): Promise<void> => {
     this.logger.info("Disconnecting...");
@@ -185,7 +231,13 @@ export class PeraAdapter extends BaseWallet<PeraOptions> {
         throw new Error("No accounts found!");
       }
 
-      const walletAccounts = this.toWalletAccounts(accounts);
+      // Accounts that stay connected keep their empty signatures, which the
+      // manager clears if an account was rekeyed.
+      const walletAccounts = this.toWalletAccounts(accounts).map(account => {
+        const { emptySignature } =
+          walletState.accounts.find(a => a.address === account.address) ?? {};
+        return emptySignature === undefined ? account : { ...account, emptySignature };
+      });
 
       if (!compareAccounts(walletAccounts, walletState.accounts)) {
         this.logger.warn("Session accounts mismatch, updating accounts", {
@@ -282,6 +334,7 @@ export class PeraAdapter extends BaseWallet<PeraOptions> {
 
       // Rekey-aware: use-wallet resolves the auth address on its own algod.
       const stdSignData = await this.createStdSignData(data);
+
       const client = await this.getClient();
       const result = await client.signArc60Data(stdSignData, metadata);
 

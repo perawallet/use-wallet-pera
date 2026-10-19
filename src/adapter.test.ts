@@ -5,6 +5,7 @@ import {
   type Store,
   type WalletState,
 } from "@txnlab/use-wallet/testing";
+import { DEFAULT_NETWORK_CONFIG, encodeEmptySignature } from "@txnlab/use-wallet";
 import { ScopeType, type AdapterStoreAccessor } from "@txnlab/use-wallet/adapter";
 import { PeraAdapter } from "./adapter";
 import { pera, WALLET_ID } from "./index";
@@ -15,6 +16,7 @@ const mockPeraWallet = {
   disconnect: vi.fn(),
   signTransaction: vi.fn(),
   signArc60Data: vi.fn(),
+  getEmptySignatures: vi.fn(),
   on: vi.fn(),
 };
 
@@ -41,6 +43,19 @@ function createWallet(
     getAlgodClient: getAlgodClient as never,
     options,
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(res => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+// Lets a request the adapter didn't await settle.
+function flushPromises() {
+  return new Promise(resolve => setTimeout(resolve, 0));
 }
 
 function emitWalletDisconnect() {
@@ -86,6 +101,7 @@ describe("PeraAdapter", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPeraWallet.getEmptySignatures.mockResolvedValue({});
     localStorage.clear();
     withState({});
   });
@@ -148,6 +164,110 @@ describe("PeraAdapter", () => {
 
       await expect(wallet.connect()).rejects.toThrow("No accounts found!");
       expect(store.state.wallets[WALLET_ID]).toBeUndefined();
+    });
+  });
+
+  describe("empty signatures", () => {
+    const sig1 = encodeEmptySignature({}); // ed25519
+    const sig2 = encodeEmptySignature({
+      lsig: new algosdk.LogicSigAccount(new Uint8Array([0x06, 0x81, 0x01])).lsig,
+    });
+
+    function storedAccounts() {
+      return store.state.wallets[WALLET_ID]?.accounts;
+    }
+
+    it("asks Pera for them after connecting and sets them on the accounts", async () => {
+      mockPeraWallet.connect.mockResolvedValueOnce([account1.address, account2.address]);
+      mockPeraWallet.getEmptySignatures.mockResolvedValueOnce({ [account1.address]: sig1 });
+
+      await wallet.connect();
+      await flushPromises();
+
+      expect(mockPeraWallet.getEmptySignatures).toHaveBeenCalledWith("testnet");
+      expect(storedAccounts()).toEqual([{ ...account1, emptySignature: sig1 }, account2]);
+    });
+
+    it("doesn't hold up connect while Pera answers", async () => {
+      mockPeraWallet.connect.mockResolvedValueOnce([account1.address]);
+      mockPeraWallet.getEmptySignatures.mockReturnValueOnce(new Promise(() => {}));
+
+      await expect(wallet.connect()).resolves.toEqual([account1]);
+      expect(storedAccounts()).toEqual([account1]);
+    });
+
+    it("finds the Pera network by genesis hash, so a renamed MainNet config counts", async () => {
+      withState({
+        activeNetwork: "production",
+        networkConfig: { production: DEFAULT_NETWORK_CONFIG.mainnet! },
+      });
+      mockPeraWallet.connect.mockResolvedValueOnce([account1.address]);
+
+      await wallet.connect();
+      await flushPromises();
+
+      expect(mockPeraWallet.getEmptySignatures).toHaveBeenCalledWith("mainnet");
+    });
+
+    it("doesn't ask on a network Pera can't answer for", async () => {
+      withState({ activeNetwork: "localnet" });
+      mockPeraWallet.connect.mockResolvedValueOnce([account1.address]);
+
+      await wallet.connect();
+      await flushPromises();
+
+      expect(mockPeraWallet.getEmptySignatures).not.toHaveBeenCalled();
+    });
+
+    it("doesn't ask on use-wallet 5.0, which has no empty signatures", async () => {
+      Object.defineProperty(wallet, "applyEmptySignatures", { value: undefined });
+      mockPeraWallet.connect.mockResolvedValueOnce([account1.address]);
+
+      await wallet.connect();
+      await flushPromises();
+
+      expect(mockPeraWallet.getEmptySignatures).not.toHaveBeenCalled();
+    });
+
+    it("leaves the accounts unknown when Pera can't answer", async () => {
+      mockPeraWallet.connect.mockResolvedValueOnce([account1.address]);
+      mockPeraWallet.getEmptySignatures.mockRejectedValueOnce(
+        peraError("Pera didn't answer in time.", "EMPTY_SIGNATURES_TIMEOUT"),
+      );
+
+      await wallet.connect();
+      await flushPromises();
+
+      expect(storedAccounts()).toEqual([account1]);
+    });
+
+    it("discards an answer that arrives after the network changed", async () => {
+      const answer = deferred<Record<string, string>>();
+      mockPeraWallet.connect.mockResolvedValueOnce([account1.address]);
+      mockPeraWallet.getEmptySignatures.mockReturnValueOnce(answer.promise);
+
+      await wallet.connect();
+      store.setState(state => ({ ...state, activeNetwork: "mainnet" }));
+      answer.resolve({ [account1.address]: sig1 });
+      await flushPromises();
+
+      expect(storedAccounts()).toEqual([account1]);
+    });
+
+    it("discards an answer to an earlier connect", async () => {
+      const first = deferred<Record<string, string>>();
+      mockPeraWallet.connect.mockResolvedValue([account1.address]);
+      mockPeraWallet.getEmptySignatures
+        .mockReturnValueOnce(first.promise)
+        .mockResolvedValueOnce({ [account1.address]: sig2 });
+
+      await wallet.connect();
+      await wallet.connect();
+      await flushPromises();
+      first.resolve({ [account1.address]: sig1 });
+      await flushPromises();
+
+      expect(storedAccounts()).toEqual([{ ...account1, emptySignature: sig2 }]);
     });
   });
 
@@ -296,6 +416,33 @@ describe("PeraAdapter", () => {
         accounts: [{ name: "Pera Account 1", address: "mockAddress2" }],
         activeAccount: { name: "Pera Account 1", address: "mockAddress2" },
       });
+    });
+
+    // Pera Connect only vouches for an answer right after a fresh connect().
+    // On resume, the manager re-checks the stored ones against algod instead.
+    it("doesn't ask Pera for empty signatures", async () => {
+      withState({ wallets: { [WALLET_ID]: walletState } });
+      mockPeraWallet.reconnectSession.mockResolvedValueOnce([account1.address]);
+
+      await wallet.resumeSession();
+      await flushPromises();
+
+      expect(mockPeraWallet.getEmptySignatures).not.toHaveBeenCalled();
+    });
+
+    it("keeps the empty signatures of accounts that stay connected when the accounts change", async () => {
+      const withSig = { ...account1, emptySignature: "gA==", authAddr: null };
+      withState({
+        wallets: { [WALLET_ID]: { accounts: [withSig, account2], activeAccount: withSig } },
+      });
+      mockPeraWallet.reconnectSession.mockResolvedValueOnce([account1.address, "mockAddress3"]);
+
+      await wallet.resumeSession();
+
+      expect(store.state.wallets[WALLET_ID]?.accounts).toEqual([
+        withSig,
+        { name: "Pera Account 2", address: "mockAddress3" },
+      ]);
     });
 
     it("removes the wallet and rethrows when reconnectSession fails", async () => {
@@ -547,6 +694,47 @@ describe("PeraAdapter", () => {
         expect.objectContaining({ signer: authAddr.publicKey }),
         metadata,
       );
+    });
+
+    describe("ARC-60 schemes", () => {
+      // From use-wallet 5.1.0-next.2 (TxnLab/use-wallet#473), createStdSignData sets
+      // `scheme` for a Falcon account. The dev dependency predates that, so the
+      // payload is stubbed.
+      function stubPayload(scheme: string, signer: Uint8Array) {
+        const payload = {
+          data: "test-data",
+          signer,
+          domain: testDomain,
+          authenticatorData: new Uint8Array(32),
+          scheme,
+        };
+        Object.defineProperty(wallet, "createStdSignData", {
+          value: vi.fn().mockResolvedValue(payload),
+        });
+        return payload;
+      }
+
+      // Pera Connect 1.9 sends the scheme and the key, and the wallet decides.
+      it("passes a falcon-1024-det request to Pera with its scheme and key", async () => {
+        const payload = stubPayload("falcon-1024-det", new Uint8Array(1793).fill(5));
+        mockPeraWallet.signArc60Data.mockResolvedValueOnce({});
+
+        await wallet.signData("test-data", metadata);
+
+        expect(mockPeraWallet.signArc60Data).toHaveBeenCalledWith(payload, metadata);
+      });
+
+      it("signs when the scheme is ed25519", async () => {
+        const payload = stubPayload(
+          "ed25519",
+          algosdk.Address.fromString(connectedAcct1).publicKey,
+        );
+        mockPeraWallet.signArc60Data.mockResolvedValueOnce({});
+
+        await wallet.signData("test-data", metadata);
+
+        expect(mockPeraWallet.signArc60Data).toHaveBeenCalledWith(payload, metadata);
+      });
     });
 
     it("maps a cancelled request to SignDataError 4001", async () => {
