@@ -26,6 +26,7 @@ const ICON = `data:image/svg+xml;base64,${btoa(icon)}`;
 // ARC-0027 / EIP-1193 style codes, matching the other use-wallet adapters.
 const USER_REJECTED = 4001;
 const INVALID_INPUT = 4300;
+const UNSUPPORTED_SCHEME = 4601;
 
 const SHARED_WALLETCONNECT_KEY = "walletconnect";
 
@@ -334,6 +335,18 @@ export class PeraAdapter extends BaseWallet<PeraOptions> {
 
       // Rekey-aware: use-wallet resolves the auth address on its own algod.
       const stdSignData = await this.createStdSignData(data);
+
+      // From use-wallet 5.1, a post-quantum account signs with an ARC-60 `scheme`
+      // (omitted means ed25519). Pera Connect sends only ed25519 requests, and
+      // can't encode a Falcon key as the signer.
+      const { scheme } = stdSignData as { scheme?: string };
+      if (scheme !== undefined && scheme !== "ed25519") {
+        throw new SignDataError(
+          `Pera can't sign data with the ${scheme} scheme`,
+          UNSUPPORTED_SCHEME,
+        );
+      }
+
       const client = await this.getClient();
       const result = await client.signArc60Data(stdSignData, metadata);
 

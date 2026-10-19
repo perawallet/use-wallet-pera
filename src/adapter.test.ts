@@ -696,6 +696,47 @@ describe("PeraAdapter", () => {
       );
     });
 
+    describe("ARC-60 schemes", () => {
+      // From use-wallet 5.1.0-next.2 (TxnLab/use-wallet#473), createStdSignData sets
+      // `scheme` for a Falcon account. The dev dependency predates that, so the
+      // payload is stubbed.
+      function stubPayload(scheme: string, signer: Uint8Array) {
+        const payload = {
+          data: "test-data",
+          signer,
+          domain: testDomain,
+          authenticatorData: new Uint8Array(32),
+          scheme,
+        };
+        Object.defineProperty(wallet, "createStdSignData", {
+          value: vi.fn().mockResolvedValue(payload),
+        });
+        return payload;
+      }
+
+      it("refuses a scheme other than ed25519 with SignDataError 4601, without asking Pera", async () => {
+        stubPayload("falcon-1024-det", new Uint8Array(1793));
+
+        await expect(wallet.signData("test-data", metadata)).rejects.toMatchObject({
+          name: "SignDataError",
+          code: 4601,
+        });
+        expect(mockPeraWallet.signArc60Data).not.toHaveBeenCalled();
+      });
+
+      it("signs when the scheme is ed25519", async () => {
+        const payload = stubPayload(
+          "ed25519",
+          algosdk.Address.fromString(connectedAcct1).publicKey,
+        );
+        mockPeraWallet.signArc60Data.mockResolvedValueOnce({});
+
+        await wallet.signData("test-data", metadata);
+
+        expect(mockPeraWallet.signArc60Data).toHaveBeenCalledWith(payload, metadata);
+      });
+    });
+
     it("maps a cancelled request to SignDataError 4001", async () => {
       mockPeraWallet.signArc60Data.mockRejectedValueOnce(
         peraError("Sign data cancelled", "SIGN_DATA_CANCELLED"),
