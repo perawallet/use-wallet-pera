@@ -48,6 +48,7 @@ With use-wallet 5.1 or later, the adapter asks Pera for each account's empty sig
 - `connect()` doesn't wait for the answer. If Pera doesn't answer within 30 seconds, the types stay unknown.
 - A resumed session keeps the empty signatures it connected with. use-wallet clears an account's if the account was rekeyed since.
 - With use-wallet 5.0, the adapter doesn't ask.
+- A Falcon-1024 account's empty signature also lets `signData` sign with the `falcon-1024-det` scheme, from use-wallet 5.1.0-next.2. Pera versions that can't sign Falcon ARC-60 yet reject the request.
 
 ## Migrating from `@txnlab/use-wallet-pera`
 

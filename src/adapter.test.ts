@@ -714,14 +714,14 @@ describe("PeraAdapter", () => {
         return payload;
       }
 
-      it("refuses a scheme other than ed25519 with SignDataError 4601, without asking Pera", async () => {
-        stubPayload("falcon-1024-det", new Uint8Array(1793));
+      // Pera Connect 1.9 sends the scheme and the key, and the wallet decides.
+      it("passes a falcon-1024-det request to Pera with its scheme and key", async () => {
+        const payload = stubPayload("falcon-1024-det", new Uint8Array(1793).fill(5));
+        mockPeraWallet.signArc60Data.mockResolvedValueOnce({});
 
-        await expect(wallet.signData("test-data", metadata)).rejects.toMatchObject({
-          name: "SignDataError",
-          code: 4601,
-        });
-        expect(mockPeraWallet.signArc60Data).not.toHaveBeenCalled();
+        await wallet.signData("test-data", metadata);
+
+        expect(mockPeraWallet.signArc60Data).toHaveBeenCalledWith(payload, metadata);
       });
 
       it("signs when the scheme is ed25519", async () => {
